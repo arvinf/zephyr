@@ -30,6 +30,18 @@
 extern "C" {
 #endif
 
+enum reset_cause {
+	RESET_PIN				= BIT(0),
+	RESET_SOFTWARE				= BIT(1),
+	RESET_BROWNOUT				= BIT(2),
+	RESET_POWER				= BIT(3),
+	RESET_WATCHDOG				= BIT(4),
+	RESET_DEBUG				= BIT(5),
+	RESET_SECURITY				= BIT(6),
+	RESET_LOW_POWER_WAKE			= BIT(7),
+	RESET_CPU_LOCKUP			= BIT(8)
+};
+
 /**
  * @brief Copy the device id to a buffer
  *
@@ -53,6 +65,30 @@ extern "C" {
 __syscall ssize_t hwinfo_get_device_id(uint8_t *buffer, size_t length);
 
 ssize_t z_impl_hwinfo_get_device_id(uint8_t *buffer, size_t length);
+
+/**
+ * @brief      Retrieve cause of device reset.
+ *
+ * @param      cause  OR'd flags TBD
+ *
+ * @retval zero if successful.
+ * @retval -ENOTSUP if there is no implementation for the particular device.
+ * @retval any negative value on driver specific errors.
+ */
+__syscall int hwinfo_get_reset_cause(u32_t *cause);
+
+int z_impl_hwinfo_get_reset_cause(u32_t *cause);
+
+/**
+ * @brief      Clear cause of device reset.
+ *
+ * @retval zero if successful.
+ * @retval -ENOTSUP if there is no implementation for the particular device.
+ * @retval any negative value on driver specific errors.
+ */
+__syscall int hwinfo_clear_reset_cause(void);
+
+int z_impl_hwinfo_clear_reset_cause(void);
 
 /**
  * @}

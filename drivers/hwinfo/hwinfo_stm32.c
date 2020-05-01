@@ -29,3 +29,65 @@ ssize_t z_impl_hwinfo_get_device_id(uint8_t *buffer, size_t length)
 
 	return length;
 }
+
+int z_impl_hwinfo_get_reset_cause(u32_t *cause)
+{
+	u32_t flags = 0;
+
+#if defined(RCC_FLAG_SFTRST)
+	if (LL_RCC_IsActiveFlag_SFTRST()) {
+		flags |= RESET_SOFTWARE;
+	}
+#endif
+#if defined(RCC_FLAG_PINRST)
+	if (LL_RCC_IsActiveFlag_PINRST()) {
+		flags |= RESET_PIN;
+	}
+#endif
+#if defined(RCC_FLAG_IWDGRST)
+	if (LL_RCC_IsActiveFlag_IWDGRST()) {
+		flags |= RESET_WATCHDOG;
+	}
+#endif
+#if defined(RCC_FLAG_WWDGRST)
+	if (LL_RCC_IsActiveFlag_WWDGRST()) {
+		flags |= RESET_WATCHDOG;
+	}
+#endif
+#if defined(RCC_FLAG_FWRST)
+	if (LL_RCC_IsActiveFlag_FWRST()) {
+		flags |= RESET_SECURITY;
+	}
+#endif
+#if defined(RCC_FLAG_BORRST)
+	if (LL_RCC_IsActiveFlag_BORRST()) {
+		flags |= RESET_BROWNOUT;
+	}
+#endif
+#if defined(RCC_FLAG_PWRRST)
+	if (LL_RCC_IsActiveFlag_PWRRST()) {
+		flags |= RESET_POWER;
+	}
+#endif
+#if defined(RCC_FLAG_PORRST)
+	if (LL_RCC_IsActiveFlag_PORRST()) {
+		flags |= RESET_POWER;
+	}
+#endif
+#if defined(RCC_FLAG_LPWRRST)
+	if (LL_RCC_IsActiveFlag_LPWRRST()) {
+		flags |= RESET_LOW_POWER_WAKE;
+	}
+#endif
+
+	*cause = flags;
+
+	return 0;
+}
+
+int z_impl_hwinfo_clear_reset_cause(void)
+{
+	LL_RCC_ClearResetFlags();
+
+	return 0;
+}
