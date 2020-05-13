@@ -490,13 +490,8 @@ int http_client_req(int sock, struct http_request *req,
 	req->internal.response.recv_buf = req->recv_buf;
 	req->internal.response.recv_buf_len = req->recv_buf_len;
 	req->internal.user_data = user_data;
+	req->internal.timeout = timeout;
 	req->internal.sock = sock;
-
-	if (timeout == NET_WAIT_FOREVER) {
-		req->internal.timeout = K_FOREVER;
-	} else {
-		req->internal.timeout = K_MSEC(timeout);
-	}
 
 	method = http_method_str(req->method);
 
@@ -568,8 +563,9 @@ int http_client_req(int sock, struct http_request *req,
 		total_sent += ret;
 	}
 
-	if (req->payload || req->payload_cb) {
-		if (req->payload_len) {
+	if ((req->payload) || (req->payload_cb)) {
+		if (req->payload_len)
+		{
 			char content_len_str[HTTP_CONTENT_LEN_SIZE];
 
 			ret = snprintk(content_len_str, HTTP_CONTENT_LEN_SIZE,
@@ -583,9 +579,11 @@ int http_client_req(int sock, struct http_request *req,
 					     &send_buf_pos, "Content-Length", ": ",
 					     content_len_str, HTTP_CRLF,
 					     HTTP_CRLF, NULL);
-		} else {
+		}else
+		{
 			ret = http_send_data(sock, send_buf, send_buf_max_len,
 				     &send_buf_pos, HTTP_CRLF, NULL);
+
 		}
 
 		if (ret < 0) {
@@ -602,28 +600,22 @@ int http_client_req(int sock, struct http_request *req,
 		send_buf_pos = 0;
 		total_sent += ret;
 
-		if (req->payload_cb) {
+		if (req->payload_cb)
+		{
 			ret = req->payload_cb(sock, req, user_data);
 			if (ret < 0) {
 				goto out;
 			}
 
 			total_sent += ret;
-		} else {
-			u32_t length;
-
-			if (req->payload_len == 0) {
-				length = strlen(req->payload);
-			} else {
-				length = req->payload_len;
-			}
-
-			ret = sendall(sock, req->payload, length);
+		}else
+		{
+			ret = sendall(sock, req->payload, req->payload_len);
 			if (ret < 0) {
 				goto out;
 			}
 
-			total_sent += length;
+			total_sent += req->payload_len;
 		}
 	} else {
 		ret = http_send_data(sock, send_buf, send_buf_max_len,
@@ -647,11 +639,9 @@ int http_client_req(int sock, struct http_request *req,
 	http_client_init_parser(&req->internal.parser,
 				&req->internal.parser_settings);
 
-	if (!K_TIMEOUT_EQ(req->internal.timeout, K_FOREVER) &&
-	    !K_TIMEOUT_EQ(req->internal.timeout, K_NO_WAIT)) {
+	if (timeout != K_FOREVER && timeout != K_NO_WAIT) {
 		k_delayed_work_init(&req->internal.work, http_timeout);
-		(void)k_delayed_work_submit(&req->internal.work,
-					    req->internal.timeout);
+		(void)k_delayed_work_submit(&req->internal.work, timeout);
 	}
 
 	/* Request is sent, now wait data to be received */
@@ -662,8 +652,7 @@ int http_client_req(int sock, struct http_request *req,
 		NET_DBG("Received %d bytes", total_recv);
 	}
 
-	if (!K_TIMEOUT_EQ(req->internal.timeout, K_FOREVER) &&
-	    !K_TIMEOUT_EQ(req->internal.timeout, K_NO_WAIT)) {
+	if (timeout != K_FOREVER && timeout != K_NO_WAIT) {
 		(void)k_delayed_work_cancel(&req->internal.work);
 	}
 

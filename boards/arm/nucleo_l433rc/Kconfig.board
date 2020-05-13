@@ -1,0 +1,9 @@
+# STM32L433RC Nucleo board configuration
+#
+# Copyright (c) 2019 Libre Solar Technologies GmbH
+#
+# SPDX-License-Identifier: Apache-2.0
+
+config BOARD_NUCLEO_L433RC
+	bool "Nucleo L433RC Development Board"
+	depends on SOC_STM32L433XX
