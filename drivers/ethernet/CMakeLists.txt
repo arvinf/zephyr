@@ -35,3 +35,5 @@ if(CONFIG_ETH_NATIVE_POSIX)
 		eth_native_posix_adapt.c
 		)
 endif()
+
+add_subdirectory(phy)
