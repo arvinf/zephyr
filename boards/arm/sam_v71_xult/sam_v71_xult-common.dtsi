@@ -210,6 +210,7 @@
 
 &mdio {
 	status = "okay";
+	pinctrl-0 = <&pd8a_gmac_gmdc &pd9a_gmac_gmdio>;
 };
 
 

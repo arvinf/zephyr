@@ -10,3 +10,11 @@ include: mdio-controller.yaml
 properties:
     reg:
       required: true
+    pinctrl-0:
+      type: phandles
+      required: false
+      description: |
+        PIO pin configuration for MDC, and MDIO signals.
+
+        For example the GMAC on SAME7x would be
+           pinctrl-0 = <&pd8a_gmac_gmdc &pd9a_gmac_gmdio>;

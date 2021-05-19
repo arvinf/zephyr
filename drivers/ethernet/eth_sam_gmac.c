@@ -1088,6 +1088,9 @@ static int gmac_init(Gmac *gmac, uint32_t gmac_ncfgr_val)
 		return mck_divisor;
 	}
 
+	LOG_INF("MCLK: %d, mck_divisor: %d", MCK_FREQ_HZ, mck_divisor);
+	LOG_INF("GMAC_NCFGR: %08x", gmac->GMAC_NCFGR);
+
 	/* Set Network Control Register to its default value, clear stats. */
 	gmac->GMAC_NCR = GMAC_NCR_CLRSTAT | GMAC_NCR_MPE;
 
@@ -1825,6 +1828,8 @@ static void phy_link_state_changed(const struct device *pdev,
 	const struct eth_sam_dev_cfg *const cfg = DEV_CFG(dev);
 	bool is_up;
 
+	LOG_INF("phy cb - is_up: %d", state->is_up);
+
 	is_up = state->is_up;
 
 	if (is_up && !dev_data->link_up) {
@@ -1952,6 +1957,7 @@ static void eth0_iface_init(struct net_if *iface)
 
 #endif
 #endif
+	LOG_INF("Setting PHY link callback");
 	if (device_is_ready(cfg->phy_dev)) {
 		phy_link_callback_set(cfg->phy_dev, &phy_link_state_changed,
 					(void *)dev);

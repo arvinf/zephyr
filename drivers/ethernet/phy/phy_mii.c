@@ -26,18 +26,21 @@ struct phy_mii_dev_config {
 };
 
 struct phy_mii_dev_data {
+	const struct device *dev;
 	phy_callback_t cb;
 	void *cb_data;
 	struct k_work_delayable monitor_work;
 	struct phy_link_state state;
 	struct k_sem sem;
-	const struct device *me;
 };
 
 #define DEV_NAME(dev) ((dev)->name)
 #define DEV_DATA(dev) ((struct phy_mii_dev_data *const)(dev)->data)
 #define DEV_CFG(dev) \
 	((const struct phy_mii_dev_config *const)(dev)->config)
+
+static int phy_mii_get_link_state(const struct device *dev,
+					struct phy_link_state *state);
 
 static inline int reg_read(const struct device *dev, uint16_t reg_addr,
 				uint16_t *value)
@@ -209,15 +212,16 @@ static void invoke_link_cb(const struct device *dev)
 		return;
 	}
 
-	memcpy(&state, &data->state, sizeof(struct phy_link_state));
-	data->cb(data->me, &state, data->cb_data);
+	phy_mii_get_link_state(dev, &state);
+
+	data->cb(data->dev, &state, data->cb_data);
 }
 
 static void monitor_work_handler(struct k_work *work)
 {
 	struct phy_mii_dev_data *const data =
 		CONTAINER_OF(work, struct phy_mii_dev_data, monitor_work);
-	const struct device *dev = data->me;
+	const struct device *dev = data->dev;
 	int rc;
 
 	k_sem_take(&data->sem, K_FOREVER);
@@ -334,7 +338,7 @@ static int phy_mii_initialize(const struct device *dev)
 
 	k_sem_init(&data->sem, 1, 1);
 
-	data->me = dev;
+	data->dev = dev;
 	data->cb = NULL;
 
 	/**
@@ -376,8 +380,8 @@ static int phy_mii_initialize(const struct device *dev)
 
 		k_work_init_delayable(&data->monitor_work,
 					monitor_work_handler);
-		k_work_reschedule(&data->monitor_work,
-				  K_MSEC(CONFIG_PHY_MONITOR_PERIOD));
+
+		monitor_work_handler(&data->monitor_work.work);
 	}
 
 	return 0;

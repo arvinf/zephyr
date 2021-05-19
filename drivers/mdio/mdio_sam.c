@@ -46,6 +46,8 @@ static int mdio_transfer(const struct device *dev, uint8_t prtad,
 
 	k_sem_take(&data->sem, K_FOREVER);
 
+	cfg->regs->GMAC_NCR |= GMAC_NCR_MPE;
+
 	/* Write mdio transaction */
 	if (cfg->protocol == CLAUSE_45) {
 		cfg->regs->GMAC_MAN = (GMAC_MAN_OP(rw ? 0x2 : 0x3))
@@ -111,11 +113,81 @@ static void mdio_sam_bus_disable(const struct device *dev)
 	cfg->regs->GMAC_NCR &= ~GMAC_NCR_MPE;
 }
 
+#ifdef CONFIG_SOC_FAMILY_SAM0
+#define MCK_FREQ_HZ	SOC_ATMEL_SAM0_MCK_FREQ_HZ
+#elif CONFIG_SOC_FAMILY_SAM
+#define MCK_FREQ_HZ	SOC_ATMEL_SAM_MCK_FREQ_HZ
+#else
+#error Unsupported SoC family
+#endif
+
+static int get_mck_clock_divisor(uint32_t mck)
+{
+	uint32_t mck_divisor;
+
+	if (mck <= 20000000U) {
+		mck_divisor = GMAC_NCFGR_CLK_MCK_8;
+	} else if (mck <= 40000000U) {
+		mck_divisor = GMAC_NCFGR_CLK_MCK_16;
+	} else if (mck <= 80000000U) {
+		mck_divisor = GMAC_NCFGR_CLK_MCK_32;
+	} else if (mck <= 120000000U) {
+		mck_divisor = GMAC_NCFGR_CLK_MCK_48;
+	} else if (mck <= 160000000U) {
+		mck_divisor = GMAC_NCFGR_CLK_MCK_64;
+	} else if (mck <= 240000000U) {
+		mck_divisor = GMAC_NCFGR_CLK_MCK_96;
+	} else {
+		LOG_ERR("No valid MDC clock");
+		mck_divisor = -ENOTSUP;
+	}
+
+	return mck_divisor;
+}
+
+#ifdef CONFIG_SOC_FAMILY_SAM
+static const struct soc_gpio_pin pins_eth0[] = ATMEL_SAM_DT_INST_PINS(0);
+#endif
+
 static int mdio_sam_initialize(const struct device *dev)
 {
+	const struct mdio_sam_dev_config *const cfg = DEV_CFG(dev);
 	struct mdio_sam_dev_data *const data = DEV_DATA(dev);
 
 	k_sem_init(&data->sem, 1, 1);
+
+
+#ifdef CONFIG_SOC_FAMILY_SAM
+	/* Enable GMAC module's clock */
+	soc_pmc_peripheral_enable(ID_GMAC);
+
+	soc_gpio_list_configure(pins_eth0, ARRAY_SIZE(pins_eth0));
+#else
+	/* Enable MCLK clock on GMAC */
+	MCLK->AHBMASK.reg |= MCLK_AHBMASK_GMAC;
+	*MCLK_GMAC |= MCLK_GMAC_MASK;
+#endif
+
+	int mck_divisor;
+
+	mck_divisor = get_mck_clock_divisor(MCK_FREQ_HZ);
+	if (mck_divisor < 0) {
+		return mck_divisor;
+	}
+
+	LOG_INF("MCLK: %d, mck_divisor: %d", MCK_FREQ_HZ, mck_divisor);
+	LOG_INF("GMAC_NCFGR: %08x", cfg->regs->GMAC_NCFGR);
+
+	/* Set Network Control Register to Enable MPE */
+	cfg->regs->GMAC_NCR |= GMAC_NCR_MPE;
+
+	/* Disable all interrupts */
+	cfg->regs->GMAC_IDR = UINT32_MAX;
+	/* Clear all interrupts */
+	(void)cfg->regs->GMAC_ISR;
+
+	cfg->regs->GMAC_NCFGR = mck_divisor;
+	LOG_INF("GMAC_NCFGR: %08x", cfg->regs->GMAC_NCFGR);
 
 	return 0;
 }
