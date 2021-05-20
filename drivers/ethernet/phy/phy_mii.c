@@ -13,25 +13,33 @@
 #include <drivers/mdio.h>
 #include <net/phy.h>
 #include <net/mii.h>
+#include <drivers/gpio.h>
 
 #include <logging/log.h>
 LOG_MODULE_REGISTER(phy_mii, CONFIG_PHY_LOG_LEVEL);
+
+#define INST_HAS_INT_OR(inst) DT_INST_NODE_HAS_PROP(inst, interrupt_gpio) ||
+#define ANY_INST_HAS_INT_GPIOS DT_INST_FOREACH_STATUS_OKAY(INST_HAS_INT_OR) 0
 
 struct phy_mii_dev_config {
 	uint8_t phy_addr;
 	bool no_reset;
 	bool fixed;
 	int fixed_speed;
+#if ANY_INST_HAS_INT_GPIOS
+	const struct gpio_dt_spec pin_int;
+#endif
 	const struct device * const mdio;
 };
 
 struct phy_mii_dev_data {
+	const struct device *dev;
 	phy_callback_t cb;
 	void *cb_data;
 	struct k_work_delayable monitor_work;
 	struct phy_link_state state;
 	struct k_sem sem;
-	const struct device *me;
+	struct gpio_callback gpio_cb;
 };
 
 #define DEV_NAME(dev) ((dev)->name)
@@ -210,14 +218,14 @@ static void invoke_link_cb(const struct device *dev)
 	}
 
 	memcpy(&state, &data->state, sizeof(struct phy_link_state));
-	data->cb(data->me, &state, data->cb_data);
+	data->cb(data->dev, &state, data->cb_data);
 }
 
 static void monitor_work_handler(struct k_work *work)
 {
 	struct phy_mii_dev_data *const data =
 		CONTAINER_OF(work, struct phy_mii_dev_data, monitor_work);
-	const struct device *dev = data->me;
+	const struct device *dev = data->dev;
 	int rc;
 
 	k_sem_take(&data->sem, K_FOREVER);
@@ -232,6 +240,7 @@ static void monitor_work_handler(struct k_work *work)
 	}
 
 	/* Submit delayed work */
+	/* TODO -- if interrupt is selected don't run work */
 	k_work_reschedule(&data->monitor_work,
 			  K_MSEC(CONFIG_PHY_MONITOR_PERIOD));
 }
@@ -326,6 +335,45 @@ static int phy_mii_link_cb_set(const struct device *dev, phy_callback_t cb,
 	return 0;
 }
 
+#if ANY_INST_HAS_INT_GPIOS
+static void phy_mii_interrupt_callback(const struct device *dev,
+				    struct gpio_callback *cb, uint32_t pins)
+{
+	struct phy_mii_dev_data *data =
+		CONTAINER_OF(cb, struct phy_mii_dev_data, gpio_cb);
+
+	/* TODO -- Clear interrupt on the PHY */
+
+	/* Schedule work to update link status */
+	k_work_reschedule(&data->monitor_work,
+			  K_MSEC(0));
+}
+
+static int phy_mii_init_interrupt(const struct device *dev)
+{
+	const struct phy_mii_dev_config *const cfg = DEV_CFG(dev);
+	struct phy_mii_dev_data *const data = DEV_DATA(dev);
+	int ret;
+
+	ret = gpio_pin_configure_dt(&cfg->pin_int, GPIO_INPUT);
+	if (ret < 0) {
+		return ret;
+	}
+
+	gpio_init_callback(&data->gpio_cb,
+			   phy_mii_interrupt_callback,
+			   BIT(cfg->pin_int.pin));
+
+	ret = gpio_add_callback(cfg->pin_int.port, &data->gpio_cb);
+	if (ret < 0) {
+		return ret;
+	}
+
+	return gpio_pin_interrupt_configure_dt(&cfg->pin_int,
+						GPIO_INT_EDGE_TO_ACTIVE);
+}
+#endif
+
 static int phy_mii_initialize(const struct device *dev)
 {
 	const struct phy_mii_dev_config *const cfg = DEV_CFG(dev);
@@ -334,8 +382,17 @@ static int phy_mii_initialize(const struct device *dev)
 
 	k_sem_init(&data->sem, 1, 1);
 
-	data->me = dev;
+	data->dev = dev;
 	data->cb = NULL;
+
+#if ANY_INST_HAS_INT_GPIOS
+	if (cfg->pin_int.port) {
+		if (phy_mii_init_interrupt(dev)) {
+			LOG_ERR("Couldn't configure interrupt pin");
+			return -ENODEV;
+		}
+	}
+#endif
 
 	/**
 	 * If this is a *fixed* link then we don't need to communicate
@@ -398,9 +455,12 @@ static const struct phy_mii_dev_config phy_mii_dev_config_##n = {	\
 	.phy_addr = DT_PROP(DT_DRV_INST(n), address),			\
 	.fixed = IS_FIXED_LINK(n),					\
 	.fixed_speed = DT_ENUM_IDX_OR(DT_DRV_INST(n), fixed_link, 0),	\
+	IF_ENABLED(DT_NODE_HAS_PROP(DT_DRV_INST(idx), interrupt_gpio),	\
+	(.pin_int = GPIO_DT_SPEC_INST_GET_OR(n, interrupt_gpio, nopin)))\
 	.mdio = UTIL_AND(UTIL_NOT(IS_FIXED_LINK(n)),			\
 			DEVICE_DT_GET(DT_PHANDLE(DT_DRV_INST(n), mdio)))\
 };
+
 
 #define PHY_MII_DEVICE(n)						\
 	PHY_MII_CONFIG(n);						\

@@ -30,3 +30,8 @@ properties:
           - "10BASE-T Full-Duplex"
           - "100BASE-T Half-Duplex"
           - "100BASE-T Full-Duplex"
+    interrupt-gpio:
+      type: phandle-array
+      required: false
+      description: |
+        GPIO pin configuration for interrupt pin
